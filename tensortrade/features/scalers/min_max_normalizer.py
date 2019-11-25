@@ -31,6 +31,7 @@ class MinMaxNormalizer(FeatureTransformer):
                  input_max: float = 1E8,
                  feature_min: float = 0,
                  feature_max: float = 1,
+                 fillna: float = 0,
                  inplace: bool = True):
         """
         Arguments:
@@ -47,13 +48,14 @@ class MinMaxNormalizer(FeatureTransformer):
         self._input_max = input_max
         self._feature_min = feature_min
         self._feature_max = feature_max
+        self._fillna = fillna
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         if self.columns is None:
             self.columns = list(X.select_dtypes('number').columns)
 
         for column in self.columns:
-            low, high = self._input_min, self._input_max
+            low, high = max(self._input_min, X[column].min()), min(self._input_max, X[column].max())
 
             scale = (self._feature_max - self._feature_min) + self._feature_min
 
@@ -66,7 +68,7 @@ class MinMaxNormalizer(FeatureTransformer):
                 column = '{}_minmax_{}_{}'.format(column, self._feature_min, self._feature_max)
 
             args = {}
-            args[column] = normalized_column
+            args[column] = normalized_column.fillna(self._fillna)
 
             X = X.assign(**args)
 
