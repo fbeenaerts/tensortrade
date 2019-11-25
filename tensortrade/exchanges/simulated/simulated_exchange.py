@@ -50,6 +50,9 @@ class SimulatedExchange(Exchange):
         self._observation_columns = kwargs.get(
             'observation_columns', ['open', 'high', 'low', 'close', 'volume'])
         self._price_column = kwargs.get('price_column', 'close')
+        self._high_column = kwargs.get('high_column', 'high')
+        self._low_column = kwargs.get('low_column', 'low')
+
         self._window_size = kwargs.get('window_size', 1)
         self._pretransform = kwargs.get('pretransform', True)
         self._price_history = None
@@ -80,7 +83,7 @@ class SimulatedExchange(Exchange):
             return
 
         self._data_frame = data_frame
-        self._price_history = data_frame[self._price_column]
+        self._price_history = data_frame[[self._price_column, self._high_column, self._low_column]]
         self._pre_transformed_columns = data_frame.columns
 
         if self._pretransform:
@@ -161,7 +164,7 @@ class SimulatedExchange(Exchange):
 
     def current_price(self, symbol: str) -> float:
         if self._price_history is not None:
-            return float(self._price_history.iloc[self._current_step])
+            return float(self._price_history.iloc[self._current_step][self._price_column])
         return 0
 
     def _is_valid_trade(self, trade: Trade) -> bool:
@@ -185,15 +188,16 @@ class SimulatedExchange(Exchange):
             self._portfolio[trade.symbol] = self._portfolio.get(trade.symbol, 0) + trade.transact_amount
         elif trade.is_sell:
             log['action'] = trade.log
-            self._balance += trade.transact_total
+            self._balance += trade.transact_total - trade.transact_commission
             self._portfolio[trade.symbol] = self._portfolio.get(trade.symbol, 0) - trade.transact_amount
         elif trade.is_hold:
             log['action'] = trade.log
         else:
             log['action'] = "Unknown Trade Type: {}".format(trade.to_dict)
 
-        if self._is_valid_trade(trade) and not trade.is_hold:
-            self._trades = self._trades.append({'step': self._current_step,
+        if self._is_valid_trade(trade):
+            self._trades = self._trades.append({'index': self.data_frame.iloc[self._current_step].name,
+                                                'step': self._current_step,
                                                 'symbol': trade.symbol,
                                                 'type': trade.trade_type,
                                                 'amount': trade.transact_amount,
@@ -202,8 +206,8 @@ class SimulatedExchange(Exchange):
         self._portfolio[self._base_instrument] = self._balance
 
         log.update({'balance': self.balance,
-                    'net_worth': self.net_worth
-                    })
+                    'net_worth': self.net_worth})
+
         self._performance = self._performance.append( log , ignore_index=True)
 
     def execute_trade(self, trade: Trade) -> Trade:
@@ -212,7 +216,6 @@ class SimulatedExchange(Exchange):
         transact_price = trade.order_price
 
         if trade.is_hold:
-            # hodl boyz!
             trade.transact_amount = transact_amount
             trade.transact_price = transact_price
         else:
